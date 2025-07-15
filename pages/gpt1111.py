@@ -26,6 +26,24 @@ if air_quality_file and energy_file and global_air_file and health_file:
     global_air = global_air.dropna()
     health = health.dropna()
 
+    # 공통 키 확인 및 병합용 날짜 컬럼 이름 동기화
+    air_key = air_quality.columns[0]
+    health_key = health.columns[0]
+    
+    # 날짜형으로 변환 시도
+    try:
+        air_quality[air_key] = pd.to_datetime(air_quality[air_key])
+        health[health_key] = pd.to_datetime(health[health_key])
+    except Exception as e:
+        st.error("날짜 열을 datetime 형식으로 변환하지 못했습니다. 열 형식을 확인해주세요.")
+
+    # 병합 위해 공통 열 이름 통일
+    air_quality = air_quality.rename(columns={air_key: "Date"})
+    health = health.rename(columns={health_key: "Date"})
+
+    # 병합
+    merged_df = pd.merge(air_quality, health, on="Date")
+
     # 사이드바에서 선택지 제공
     view = st.sidebar.selectbox("🔍 보고 싶은 분석 항목을 선택하세요", [
         "실내 공기질 추이 분석",
@@ -38,8 +56,7 @@ if air_quality_file and energy_file and global_air_file and health_file:
     if view == "실내 공기질 추이 분석":
         st.header("📈 실내 공기질 주요 지표 추이")
         selected_column = st.selectbox("분석할 항목을 선택하세요", air_quality.columns[1:])
-        fig = px.line(air_quality, x=air_quality.columns[0], y=selected_column,
-                      title=f"{selected_column} 변화 추이")
+        fig = px.line(air_quality, x="Date", y=selected_column, title=f"{selected_column} 변화 추이")
         st.plotly_chart(fig, use_container_width=True)
 
     # 2. 에너지 소비 패턴
@@ -53,10 +70,9 @@ if air_quality_file and energy_file and global_air_file and health_file:
     # 3. 건강 지표와의 상관관계
     elif view == "건강 지표와의 상관관계":
         st.header("💊 공기질과 건강 지표 간의 상관관계 분석")
-        corr_df = pd.merge(air_quality, health, left_on=air_quality.columns[0], right_on=health.columns[0])
         selected_col = st.selectbox("분석할 공기질 항목을 선택하세요", air_quality.columns[1:])
         selected_health = st.selectbox("분석할 건강지표를 선택하세요", health.columns[1:])
-        fig = px.scatter(corr_df, x=selected_col, y=selected_health,
+        fig = px.scatter(merged_df, x=selected_col, y=selected_health,
                          trendline="ols", title=f"{selected_col} vs {selected_health}")
         st.plotly_chart(fig, use_container_width=True)
 
@@ -75,4 +91,3 @@ if air_quality_file and energy_file and global_air_file and health_file:
 
 else:
     st.warning("📂 모든 데이터 파일을 업로드해주세요. 사이드바에서 CSV 파일 4개를 업로드해야 분석이 가능합니다.")
-
