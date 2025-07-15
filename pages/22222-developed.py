@@ -5,10 +5,7 @@ import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
-from scipy.stats import pearsonr, spearmanr
+from scipy.stats import pearsonr
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -249,53 +246,65 @@ if df_indoor_processed is not None and not df_indoor_processed.empty:
                         )
                         st.plotly_chart(fig_time, use_container_width=True)
         
-        # --- 5.3 클러스터링 분석 ---
-        st.subheader('🔍 건강 위험도 클러스터링')
+        # --- 5.3 간단한 위험도 분류 ---
+        st.subheader('🔍 건강 위험도 분류')
         
         if available_health_cols:
-            # 건강 지표만으로 클러스터링
-            health_data_for_clustering = integrated_data[available_health_cols].dropna()
+            # 건강 지표만으로 위험도 분류
+            health_data_for_analysis = integrated_data[available_health_cols].dropna()
             
-            if not health_data_for_clustering.empty:
-                # 데이터 표준화
-                scaler = StandardScaler()
-                health_scaled = scaler.fit_transform(health_data_for_clustering)
+            if not health_data_for_analysis.empty:
+                # 전체 건강 지표 평균 계산
+                health_data_for_analysis['Average_Health_Score'] = health_data_for_analysis.mean(axis=1)
                 
-                # K-means 클러스터링 (3개 클러스터: 낮음, 보통, 높음)
-                kmeans = KMeans(n_clusters=3, random_state=42)
-                clusters = kmeans.fit_predict(health_scaled)
+                # 삼분위수 기준으로 위험도 분류
+                q33 = health_data_for_analysis['Average_Health_Score'].quantile(0.33)
+                q67 = health_data_for_analysis['Average_Health_Score'].quantile(0.67)
                 
-                # 클러스터 결과 추가
-                health_data_for_clustering['Risk_Cluster'] = clusters
-                cluster_labels = ['낮은 위험', '보통 위험', '높은 위험']
-                health_data_for_clustering['Risk_Level'] = [cluster_labels[i] for i in clusters]
+                def classify_risk(score):
+                    if score <= q33:
+                        return '낮은 위험'
+                    elif score <= q67:
+                        return '보통 위험'
+                    else:
+                        return '높은 위험'
                 
-                # 클러스터별 분포 시각화
+                health_data_for_analysis['Risk_Level'] = health_data_for_analysis['Average_Health_Score'].apply(classify_risk)
+                
+                # 위험도 분포 시각화
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    cluster_counts = pd.Series(clusters).value_counts().sort_index()
-                    fig_cluster = px.pie(
-                        values=cluster_counts.values,
-                        names=[cluster_labels[i] for i in cluster_counts.index],
-                        title="건강 위험도 클러스터 분포"
+                    risk_counts = health_data_for_analysis['Risk_Level'].value_counts()
+                    fig_risk = px.pie(
+                        values=risk_counts.values,
+                        names=risk_counts.index,
+                        title="건강 위험도 분포"
                     )
-                    st.plotly_chart(fig_cluster, use_container_width=True)
+                    st.plotly_chart(fig_risk, use_container_width=True)
                 
                 with col2:
-                    # PCA로 차원 축소 후 시각화
-                    pca = PCA(n_components=2)
-                    health_pca = pca.fit_transform(health_scaled)
-                    
-                    fig_pca = px.scatter(
-                        x=health_pca[:, 0], 
-                        y=health_pca[:, 1],
-                        color=[cluster_labels[i] for i in clusters],
-                        title="건강 위험도 클러스터 (PCA 시각화)",
-                        labels={'x': f'PC1 ({pca.explained_variance_ratio_[0]:.1%})', 
-                               'y': f'PC2 ({pca.explained_variance_ratio_[1]:.1%})'}
+                    # 위험도별 평균 건강 점수
+                    avg_by_risk = health_data_for_analysis.groupby('Risk_Level')['Average_Health_Score'].mean()
+                    fig_avg = px.bar(
+                        x=avg_by_risk.index,
+                        y=avg_by_risk.values,
+                        title="위험도별 평균 건강 점수",
+                        labels={'x': '위험도', 'y': '평균 건강 점수'}
                     )
-                    st.plotly_chart(fig_pca, use_container_width=True)
+                    st.plotly_chart(fig_avg, use_container_width=True)
+                
+                # 위험도별 상세 분석
+                st.subheader('위험도별 상세 분석')
+                for risk_level in ['높은 위험', '보통 위험', '낮은 위험']:
+                    risk_data = health_data_for_analysis[health_data_for_analysis['Risk_Level'] == risk_level]
+                    if not risk_data.empty:
+                        with st.expander(f"{risk_level} 그룹 분석 ({len(risk_data)}건)"):
+                            st.write(f"**평균 건강 점수**: {risk_data['Average_Health_Score'].mean():.2f}")
+                            st.write("**주요 건강 지표 평균값**:")
+                            for col in available_health_cols:
+                                st.write(f"- {col}: {risk_data[col].mean():.2f}")
+        
         
         # --- 5.4 시계열 분석 ---
         st.subheader('📅 시계열 트렌드 분석')
@@ -338,12 +347,15 @@ if df_indoor_processed is not None and not df_indoor_processed.empty:
         
         # CO 농도와 호흡기 증상 관련 권장사항
         if 'CO(GT)' in integrated_data.columns and 'Respiratory_Symptoms' in integrated_data.columns:
-            co_corr = integrated_data['CO(GT)'].corr(integrated_data['Respiratory_Symptoms'])
-            if co_corr > 0.3:
-                recommendations.append("🔴 CO 농도와 호흡기 증상 간 강한 양의 상관관계가 발견되었습니다. 환기 시스템 점검을 권장합니다.")
+            co_corr, _ = pearsonr(integrated_data['CO(GT)'].dropna(), integrated_data['Respiratory_Symptoms'].dropna())
+            if abs(co_corr) > 0.3:
+                if co_corr > 0:
+                    recommendations.append("🔴 CO 농도와 호흡기 증상 간 강한 양의 상관관계가 발견되었습니다. 환기 시스템 점검을 권장합니다.")
+                else:
+                    recommendations.append("🟢 CO 농도와 호흡기 증상 간 음의 상관관계가 발견되었습니다.")
         
         # 온도와 불쾌지수 관련 권장사항
-        if 'T' in integrated_data.columns and 'Discomfort_Index' in integrated_data.columns:
+        if 'T' in integrated_data.columns:
             temp_mean = integrated_data['T'].mean()
             if temp_mean > 25:
                 recommendations.append("🌡️ 평균 실내 온도가 25°C를 초과합니다. 냉방 시스템 가동을 권장합니다.")
@@ -364,11 +376,32 @@ if df_indoor_processed is not None and not df_indoor_processed.empty:
             if health_mean > 60:
                 recommendations.append("⚠️ 전반적인 건강 지수가 높습니다. 실내 공기질 개선을 위한 종합적인 조치가 필요합니다.")
         
+        # 벤젠과 두통 관련 권장사항
+        if 'C6H6(GT)' in integrated_data.columns and 'Headache_Index' in integrated_data.columns:
+            benzene_mean = integrated_data['C6H6(GT)'].mean()
+            if benzene_mean > integrated_data['C6H6(GT)'].quantile(0.75):
+                recommendations.append("🧴 벤젠 농도가 높습니다. 화학물질 사용을 줄이고 환기를 강화하세요.")
+        
         if recommendations:
             for rec in recommendations:
                 st.warning(rec)
         else:
             st.success("✅ 현재 실내 공기질 상태가 양호합니다.")
+        
+        # 추가 일반 권장사항
+        st.subheader('🏠 일반 실내 공기질 관리 권장사항')
+        general_recommendations = [
+            "🌬️ 정기적인 환기 (하루 2-3회, 10-15분씩)",
+            "🌱 공기정화식물 배치 (산세베리아, 스파티필름 등)",
+            "🧹 정기적인 청소 및 먼지 제거",
+            "🚫 실내 흡연 금지",
+            "🌡️ 적정 온도 유지 (18-25°C)",
+            "💧 적정 습도 유지 (40-60%)",
+            "🔧 에어컨 및 환기 시스템 필터 정기 교체"
+        ]
+        
+        for rec in general_recommendations:
+            st.info(rec)
     
     else:
         st.error("통합 데이터 생성에 실패했습니다. 실내 공기질 데이터를 확인해주세요.")
