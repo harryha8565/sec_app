@@ -6,7 +6,6 @@ import plotly.express as px
 import numpy as np
 
 # --- 1. 데이터 로드 함수 정의 ---
-# @st.cache_data를 사용하여 데이터를 캐싱하여 앱 성능 향상
 @st.cache_data
 def load_data(file_path):
     try:
@@ -20,16 +19,15 @@ def load_data(file_path):
         return None
 
 # --- 데이터 파일 경로 설정 ---
-# 실제 환경에서는 이 파일들이 앱 실행 경로에 있어야 합니다.
 ENERGY_CONSUMPTION_FILE = 'Energy_consumption - Energy_consumption.csv'
 GLOBAL_AIR_QUALITY_FILE = 'global_air_quality_data_10000 - global_air_quality_data_10000.csv'
-HEALTH_IMPACT_FILE = 'air_quality_health_impact_data - air_quality_health_impact_data.csv'
+HEALTH_IMPACT_FILE = 'air_quality_health_impact_data - air_quality_health_impact_data.csv' # 이 파일의 컬럼명이 변경됨
 INDOOR_AIR_QUALITY_FILE = 'AirQuality - AirQuality.csv'
 
 # --- 데이터 로드 ---
 df_energy = load_data(ENERGY_CONSUMPTION_FILE)
 df_global_aq = load_data(GLOBAL_AIR_QUALITY_FILE)
-df_health = load_data(HEALTH_IMPACT_FILE)
+df_health = load_data(HEALTH_IMPACT_FILE) # 이제 이 df는 건강 영향 데이터를 담음
 df_indoor_aq = load_data(INDOOR_AIR_QUALITY_FILE)
 
 # --- 2. 앱 제목 및 설명 ---
@@ -56,8 +54,8 @@ if st.sidebar.checkbox('데이터셋 미리보기 및 정보 확인'):
         st.write(df_global_aq.info())
         st.write('결측치:\n', df_global_aq.isnull().sum())
     if df_health is not None:
-        st.write('**3. 공기질 건강 영향 데이터 (`health_impact.csv`)**')
-        st.dataframe(df_health.head())
+        st.write('**3. 공기질 건강 영향 데이터 (`air_quality_health_impact_data.csv`)**') # 다시 이름 복구
+        st.dataframe(df_health.head()) # 여기에서 실제 컬럼명을 확인하세요!
         st.write(df_health.info())
         st.write('결측치:\n', df_health.isnull().sum())
     if df_indoor_aq is not None:
@@ -67,7 +65,7 @@ if st.sidebar.checkbox('데이터셋 미리보기 및 정보 확인'):
         st.write('결측치:\n', df_indoor_aq.isnull().sum())
 
 
-# --- 4. 데이터 전처리 및 통합 (가장 중요한 부분) ---
+# --- 4. 데이터 전처리 및 통합 ---
 st.sidebar.header('분석 설정')
 
 # --- 4.1 실내 공기질 (Indoor Air Quality) 분석 ---
@@ -75,32 +73,24 @@ if df_indoor_aq is not None:
     st.sidebar.subheader('실내 공기질 분석 설정')
     st.header('🏡 실내 공기질 데이터 분석')
 
-    # 날짜-시간 컬럼 결합 및 datetime 형식으로 변환
     try:
-        # 오류 발생 지점 수정: format 인자 명시
         df_indoor_aq['DateTime'] = pd.to_datetime(df_indoor_aq['Date'] + ' ' + df_indoor_aq['Time'],
                                                   format='%d/%m/%Y %H.%M.%S', errors='coerce')
         df_indoor_aq.set_index('DateTime', inplace=True)
         
-        # 잘못된 값(-200)을 NaN으로 처리하고 보간
         df_indoor_aq.replace(-200, np.nan, inplace=True)
-        # 숫자형 컬럼에만 선형 보간 적용
         numeric_cols = df_indoor_aq.select_dtypes(include=np.number).columns
         df_indoor_aq[numeric_cols] = df_indoor_aq[numeric_cols].apply(lambda col: col.interpolate(method='linear'))
 
-        # DateTime이 NaT (Not a Time)인 행 제거 (변환 실패한 행)
         df_indoor_aq.dropna(subset=['DateTime'], inplace=True)
 
     except KeyError:
         st.warning("df_indoor_aq에 'Date' 또는 'Time' 컬럼이 없어 시계열 분석이 어렵습니다. 해당 컬럼이 있는지 확인해주세요.")
     except Exception as e:
         st.warning(f"df_indoor_aq 날짜/시간 변환 중 오류 발생: {e}. 데이터 형식(예: 10/03/2004 18.00.00)을 확인해주세요.")
-        # 오류 발생 시 빈 DataFrame으로 처리하여 다음 분석이 중단되지 않도록 함
-        df_indoor_aq = pd.DataFrame()
+        df_indoor_aq = pd.DataFrame() # 오류 발생 시 빈 DataFrame으로 처리
 
-
-    # df_indoor_aq가 비어있지 않고, 필요한 컬럼이 있는 경우에만 분석 진행
-    if not df_indoor_aq.empty and not df_indoor_aq.select_dtypes(include=np.number).empty: # 숫자형 컬럼이 없으면 그래프 불가
+    if not df_indoor_aq.empty and not df_indoor_aq.select_dtypes(include=np.number).empty:
         air_quality_metrics_candidate = ['CO(GT)', 'C6H6(GT)', 'NOx(GT)', 'NO2(GT)', 'PT08.S5(O3)', 'T', 'RH']
         air_quality_metrics_available = [col for col in air_quality_metrics_candidate if col in df_indoor_aq.columns and pd.api.types.is_numeric_dtype(df_indoor_aq[col])]
         
@@ -108,9 +98,7 @@ if df_indoor_aq is not None:
             selected_aq_metric = st.sidebar.selectbox('시각화할 공기질 지표 선택', air_quality_metrics_available)
 
             st.subheader(f'{selected_aq_metric} 시계열 변화')
-            # 시간 기반 인덱스가 올바르게 설정되었는지 확인 후 시계열 그래프
             if 'DateTime' in df_indoor_aq.index.name:
-                # 데이터가 너무 많을 경우를 대비하여 시간 단위로 리샘플링
                 df_resampled = df_indoor_aq.resample('H').mean(numeric_only=True).reset_index()
                 fig = px.line(df_resampled, x='DateTime', y=selected_aq_metric,
                               title=f'{selected_aq_metric} Time Series (Hourly Average)')
@@ -129,44 +117,85 @@ if df_indoor_aq is not None:
         st.warning("실내 공기질 데이터 처리 중 오류가 발생했거나, 유효한 데이터가 없어 분석할 수 없습니다.")
 
 
-# --- 4.2 건강 영향 (Health Impact) 데이터 분석 ---
+# --- 4.2 공기질 건강 영향 데이터 (air_quality_health_impact_data.csv) 분석 ---
+# 실제 컬럼명: RecordID, AQI, PM10, PM2_5, NO2, SO2, O3, Temperature, Humidity, WindSpeed, RespiratoryCases, CardiovascularCases, HospitalAdmissions, HealthImpactScore, HealthImpactClass
 if df_health is not None:
-    st.sidebar.subheader('건강 영향 분석 설정')
-    st.header('😷 공기질 건강 영향 데이터 분석')
+    st.sidebar.subheader('공기질 건강 영향 데이터 분석 설정')
+    st.header('😷 공기질 및 건강 영향 데이터 분석')
+    st.markdown("""
+    이 데이터셋은 대기질 지표, 환경 요인, 그리고 호흡기/심혈관 질환 발생 및 병원 입원 데이터,
+    종합 건강 영향 점수 및 등급을 포함합니다.
+    """)
 
-    health_symptoms = ['eye_irritation', 'throat_irritation', 'cough', 'shortness_of_breath', 'headache', 'fatigue']
-    
-    # 'pollutant'와 'severity' 컬럼 존재 여부 및 숫자형 여부 확인
-    if 'pollutant' in df_health.columns and 'severity' in df_health.columns:
-        st.subheader('오염물질별 건강 증상 심각도')
-        df_health['severity'] = pd.to_numeric(df_health['severity'], errors='coerce')
-        if not df_health['severity'].dropna().empty: # severity에 유효한 숫자 값이 있는지 확인
-            avg_severity = df_health.groupby('pollutant')['severity'].mean().reset_index()
-            fig = px.bar(avg_severity,
-                         x='pollutant', y='severity',
-                         title='Average Health Symptom Severity by Pollutant')
-            st.plotly_chart(fig, use_container_width=True)
+    # --- 대기질 및 환경 요인 분석 ---
+    aq_env_cols = ['AQI', 'PM10', 'PM2_5', 'NO2', 'SO2', 'O3', 'Temperature', 'Humidity', 'WindSpeed']
+    aq_env_metrics_available = [col for col in aq_env_cols if col in df_health.columns and pd.api.types.is_numeric_dtype(df_health[col])]
+
+    if aqi_metrics_available: # 이전에 정의된 aqi_metrics_available 변수 사용
+        selected_aqi_metric = st.sidebar.selectbox('시각화할 대기질/환경 지표 선택', aq_env_metrics_available, key='health_aq_env_select')
+        
+        st.subheader(f'{selected_aqi_metric} 분포')
+        fig_dist, ax_dist = plt.subplots(figsize=(10, 6))
+        sns.histplot(df_health[selected_aqi_metric].dropna(), kde=True, ax=ax_dist)
+        ax_dist.set_title(f'{selected_aqi_metric} Distribution')
+        st.pyplot(fig_dist)
+
+        if len(aq_env_metrics_available) > 1:
+            st.subheader('대기질 및 환경 지표 상관관계')
+            corr_matrix_aq_env = df_health[aq_env_metrics_available].corr()
+            fig_corr_aq_env, ax_corr_aq_env = plt.subplots(figsize=(10, 8))
+            sns.heatmap(corr_matrix_aq_env, annot=True, cmap='coolwarm', fmt=".2f", ax=ax_corr_aq_env)
+            ax_corr_aq_env.set_title('Correlation Matrix of Air Quality and Environmental Factors')
+            st.pyplot(fig_corr_aq_env)
+    else:
+        st.info("이 데이터셋에 분석 가능한 숫자형 대기질/환경 지표 컬럼이 충분하지 않습니다.")
+
+    # --- 건강 영향 지표 분석 ---
+    health_outcome_cols = ['RespiratoryCases', 'CardiovascularCases', 'HospitalAdmissions']
+    health_outcome_metrics_available = [col for col in health_outcome_cols if col in df_health.columns and pd.api.types.is_numeric_dtype(df_health[col])]
+
+    if health_outcome_metrics_available:
+        st.subheader('건강 영향 지표 요약')
+        st.dataframe(df_health[health_outcome_metrics_available].describe().T)
+
+        selected_health_outcome = st.sidebar.selectbox('시각화할 건강 영향 지표 선택', health_outcome_metrics_available, key='health_outcome_select')
+        
+        st.subheader(f'{selected_health_outcome} 분포')
+        fig_health_dist, ax_health_dist = plt.subplots(figsize=(10, 6))
+        sns.histplot(df_health[selected_health_outcome].dropna(), kde=True, ax=ax_health_dist)
+        ax_health_dist.set_title(f'{selected_health_outcome} Distribution')
+        st.pyplot(fig_health_dist)
+        
+        # AQI와 건강 영향 지표 간의 관계 (산점도)
+        if 'AQI' in df_health.columns and pd.api.types.is_numeric_dtype(df_health['AQI']):
+            st.subheader(f'AQI와 {selected_health_outcome} 관계')
+            fig_aqi_health = px.scatter(df_health, x='AQI', y=selected_health_outcome,
+                                        title=f'AQI vs. {selected_health_outcome}')
+            st.plotly_chart(fig_aqi_health, use_container_width=True)
         else:
-            st.info("'severity' 컬럼에 유효한 숫자 데이터가 없어 오염물질별 심각도 분석을 할 수 없습니다.")
+            st.info("'AQI' 컬럼이 없어 AQI와 건강 영향 지표 간의 관계를 분석할 수 없습니다.")
     else:
-        st.info("건강 영향 데이터에 'pollutant' 또는 'severity' 컬럼이 없어 오염물질별 심각도 분석을 할 수 없습니다.")
+        st.info("이 데이터셋에 분석 가능한 숫자형 건강 영향 지표 컬럼이 충분하지 않습니다.")
 
-    health_symptoms_available = [col for col in health_symptoms if col in df_health.columns]
-    if health_symptoms_available:
-        st.subheader('각 건강 증상 보고 빈도')
-        try:
-            # boolean 또는 0/1 형태의 컬럼을 sum()하여 빈도 계산
-            symptom_counts = df_health[health_symptoms_available].sum().sort_values(ascending=False)
-            fig_symptom, ax_symptom = plt.subplots(figsize=(10, 6))
-            sns.barplot(x=symptom_counts.index, y=symptom_counts.values, ax=ax_symptom)
-            ax_symptom.set_title('Frequency of Reported Health Symptoms')
-            ax_symptom.set_ylabel('Number of Reports')
-            ax_symptom.set_xticklabels(ax_symptom.get_xticklabels(), rotation=45, ha='right')
-            st.pyplot(fig_symptom)
-        except TypeError:
-            st.warning("건강 증상 컬럼의 데이터 타입이 숫자가 아니거나 boolean이 아니어서 보고 빈도 계산에 문제가 있습니다. 숫자로 변환하거나 boolean 값을 사용해야 합니다.")
+    # --- HealthImpactScore 및 HealthImpactClass 분석 ---
+    if 'HealthImpactScore' in df_health.columns and pd.api.types.is_numeric_dtype(df_health['HealthImpactScore']):
+        st.subheader('건강 영향 점수 (HealthImpactScore) 분포')
+        fig_score, ax_score = plt.subplots(figsize=(10, 6))
+        sns.histplot(df_health['HealthImpactScore'].dropna(), kde=True, ax=ax_score)
+        ax_score.set_title('HealthImpactScore Distribution')
+        st.pyplot(fig_score)
     else:
-        st.info("건강 영향 데이터에 분석 가능한 건강 지표 컬럼이 충분하지 않습니다.")
+        st.info("'HealthImpactScore' 컬럼이 없어 건강 영향 점수 분석을 할 수 없습니다.")
+
+    if 'HealthImpactClass' in df_health.columns:
+        st.subheader('건강 영향 등급 (HealthImpactClass) 분포')
+        class_counts = df_health['HealthImpactClass'].value_counts().reset_index()
+        class_counts.columns = ['HealthImpactClass', 'Count']
+        fig_class = px.bar(class_counts, x='HealthImpactClass', y='Count',
+                           title='HealthImpactClass Distribution')
+        st.plotly_chart(fig_class, use_container_width=True)
+    else:
+        st.info("'HealthImpactClass' 컬럼이 없어 건강 영향 등급 분석을 할 수 없습니다.")
 
 
 # --- 4.3 에너지 소비 (Energy Consumption) 데이터 분석 ---
@@ -255,11 +284,11 @@ if st.checkbox('통합 분석 아이디어 보기'):
     - 에너지 절약을 위한 환기 전략 제안 (예: CO2 농도가 낮을 때는 환기 강도를 줄임)
     """)
 
-    st.subheader('아이디어 2: 실내 공기질-건강 지표 상관관계')
+    st.subheader('아이디어 2: 실내 공기질-건강 영향 지표 상관관계') # 명칭 변경
     st.markdown("""
     만약 `df_indoor_aq`와 `df_health`가 `Location_ID` 및 `DateTime`으로 연결될 수 있다면:
-    - 특정 공기 오염물질 농도 (CO, NO2, O3)와 특정 건강 증상 (두통, 호흡기 문제) 간의 상관관계 분석
-    - 공기질이 악화될 때 건강 지표가 어떻게 변하는지 시계열 분석
+    - 실내 공기 오염물질 농도와 `RespiratoryCases`, `CardiovascularCases`, `HospitalAdmissions`, `HealthImpactScore` 등 건강 지표 간의 관계 분석
+    - 외부 공기질(AQI, PM2.5)이 건강 영향 지표에 미치는 영향 분석
     """)
 
 st.sidebar.markdown('---')
