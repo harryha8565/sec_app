@@ -512,4 +512,23 @@ if st.sidebar.checkbox('상세 통계 분석'):
             
             # 분포 분석
             st.write("**분포 분석**")
-            numeric_cols =
+            numeric_cols = integrated_data.select_dtypes(include=[np.number]).columns
+        selected_col = st.selectbox("분포를 확인할 컬럼을 선택하세요:", numeric_cols)
+        
+        if selected_col:
+            fig_dist, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+            
+            # 히스토그램
+            ax1.hist(integrated_data[selected_col].dropna(), bins=30, alpha=0.7, color='skyblue')
+            ax1.set_title(f'{selected_col} 히스토그램')
+            ax1.set_xlabel(selected_col)
+            ax1.set_ylabel('빈도')
+            
+            # 박스플롯
+            ax2.boxplot(integrated_data[selected_col].dropna())
+            ax2.set_title(f'{selected_col} 박스플롯')
+            ax2.set_ylabel(selected_col)
+            
+            st.pyplot(fig_dist)
+
+st.sidebar.info('💡 이 웹앱은 실내 공기질과 건강 상태 간의 상관관계를 분석하여 건강한 실내 환경 조성을 위한 인사이트를 제공합니다.')
