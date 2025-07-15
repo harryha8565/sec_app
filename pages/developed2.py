@@ -19,7 +19,7 @@ def load_data(file_path):
         st.error(f"파일 로드 오류: {e}")
         return None
 
-# --- 실내 공기질 전체리 함수 ---
+# --- 실내 공기질 전처리 함수 ---
 @st.cache_data
 def preprocess_indoor_air_data(df):
     if df is None or df.empty:
@@ -40,7 +40,7 @@ def preprocess_indoor_air_data(df):
         df.interpolate(method='linear', inplace=True)
         return df
     except Exception as e:
-        st.error(f"전체리 오류: {e}")
+        st.error(f"전처리 오류: {e}")
         return None
 
 # --- 건강 지표 생성 함수 ---
@@ -88,14 +88,14 @@ if df_integrated is not None:
     st.success("데이터가 성공적으로 로드 및 통합되었습니다!")
     st.dataframe(df_integrated.head())
 
-    st.subheader("📈 상\uu관\uu관\uu0b관\uu관\uu0b관\uu0b계 분석")
+    st.subheader("📈 상관관계 분석")
     numeric_df = df_integrated.select_dtypes(include=np.number)
     corr_matrix = numeric_df.corr()
     fig, ax = plt.subplots(figsize=(12, 8))
     sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', ax=ax)
     st.pyplot(fig)
 
-    st.subheader("🖉 주요 상\uu관\uu관\uu0b관\uu관\uu0b관\uu0b계 분석")
+    st.subheader("📉 주요 상관관계 분석")
     health_cols = [c for c in numeric_df.columns if 'Index' in c or 'Symptoms' in c]
     aq_cols = [c for c in numeric_df.columns if c not in health_cols]
     result = []
@@ -108,19 +108,8 @@ if df_integrated is not None:
                 continue
     top_corr = sorted(result, key=lambda x: abs(x[2]), reverse=True)[:3]
     for a, h, c in top_corr:
-        st.markdown(f"**{a} vs {h}** (상\uu관\uu관\uu0b관\uu관\uu0b관\uu0b계수: {c:.2f})")
+        st.markdown(f"**{a} vs {h}** (상관계수: {c:.2f})")
         fig2 = px.scatter(df_integrated, x=a, y=h, trendline="ols")
         st.plotly_chart(fig2)
-
-    # 표지선 생성을 위해 대기질 관련 타겟 찾기
-    aq_env_cols = ['AQI', 'PM10', 'PM2_5', 'NO2', 'SO2', 'O3', 'Temperature', 'Humidity']
-    aq_env_metrics_available = [col for col in aq_env_cols if col in df_integrated.columns]
-
-    if aq_env_metrics_available:
-        selected_aqi_metric = st.sidebar.selectbox('시각화할 대기질/환경 변수 선택', aq_env_metrics_available)
-        st.subheader(f'{selected_aqi_metric} 분포')
-        fig3 = px.histogram(df_integrated, x=selected_aqi_metric, nbins=30, title=f'{selected_aqi_metric} Histogram')
-        st.plotly_chart(fig3)
-
 else:
     st.error("데이터 처리에 실패했습니다. 파일을 확인해주세요.")
