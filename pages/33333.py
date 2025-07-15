@@ -138,58 +138,7 @@ def health_impact_analysis(df):
     else:
         st.info("분석 가능한 대기질/환경 지표가 없습니다.")
 
-    # 건강 영향 지표 분석
-    st.subheader("건강 영향 지표 분석")
-    health_cols = ['RespiratoryCases', 'CardiovascularCases', 'HospitalAdmissions']
-    health_metrics_available = [col for col in health_cols if col in df.columns and pd.api.types.is_numeric_dtype(df[col])]
-
-    if health_metrics_available and 'AQI' in df.columns:
-        selected_health_metric = st.sidebar.selectbox('시각화할 건강 영향 지표', health_metrics_available, key='health_outcome_select')
-        st.subheader(f'AQI와 {selected_health_metric}의 관계')
-        fig_scatter = px.scatter(df, x='AQI', y=selected_health_metric, trendline="ols",
-                                 title=f'AQI vs. {selected_health_metric}')
-        st.plotly_chart(fig_scatter, use_container_width=True)
-    else:
-        st.info("분석 가능한 건강 영향 지표 또는 'AQI' 컬럼이 없습니다.")
-
-    # 건강 영향 등급 분석
-    if 'HealthImpactClass' in df.columns:
-        st.subheader('건강 영향 등급 분포')
-        class_counts = df['HealthImpactClass'].value_counts().reset_index()
-        fig_bar = px.bar(class_counts, x='HealthImpactClass', y='count', title='건강 영향 등급 분포')
-        st.plotly_chart(fig_bar, use_container_width=True)
-
-def energy_consumption_analysis(df):
-    """에너지 소비 데이터 분석 및 시각화"""
-    st.header('⚡ 에너지 소비 데이터 분석')
-    if df is None:
-        st.warning("에너지 소비 데이터가 로드되지 않았습니다.")
-        return
-
-    # 데이터 타입 변환
-    df['Energy_Consumption_kWh'] = pd.to_numeric(df['Energy_Consumption_kWh'], errors='coerce')
-    df.dropna(subset=['Energy_Consumption_kWh'], inplace=True)
-
-    if 'Building_Type' in df.columns:
-        st.subheader('건물 유형별 평균 에너지 소비량')
-        avg_energy_building = df.groupby('Building_Type')['Energy_Consumption_kWh'].mean().reset_index()
-        fig = px.bar(avg_energy_building, x='Building_Type', y='Energy_Consumption_kWh', title='건물 유형별 평균 에너지 소비량')
-        st.plotly_chart(fig, use_container_width=True)
-
-    if 'Ventilation_System' in df.columns:
-        st.subheader('환기 시스템 유형별 평균 에너지 소비량')
-        avg_energy_ventilation = df.groupby('Ventilation_System')['Energy_Consumption_kWh'].mean().reset_index()
-        fig2 = px.bar(avg_energy_ventilation, x='Ventilation_System', y='Energy_Consumption_kWh', title='환기 시스템 유형별 평균 에너지 소비량')
-        st.plotly_chart(fig2, use_container_width=True)
     
-    energy_corr_cols = ['Energy_Consumption_kWh', 'Temperature_C', 'Humidity_%', 'Occupancy_Count']
-    energy_corr_available = [col for col in energy_corr_cols if col in df.columns and pd.api.types.is_numeric_dtype(df[col])]
-    if len(energy_corr_available) > 1:
-        st.subheader('에너지 소비 관련 지표 상관관계')
-        corr_matrix = df[energy_corr_available].corr()
-        fig_corr, ax_corr = plt.subplots()
-        sns.heatmap(corr_matrix, annot=True, cmap='viridis', fmt=".2f", ax=ax_corr)
-        st.pyplot(fig_corr)
 
 def global_air_quality_analysis(df):
     """글로벌 대기질 데이터 분석 및 시각화 (참고용)"""
@@ -219,8 +168,7 @@ if analysis_option == '데이터 개요':
         display_dataframe_info(df_indoor_aq, "실내 공기질")
     if df_health is not None:
         display_dataframe_info(df_health, "공기질 건강 영향")
-    if df_energy is not None:
-        display_dataframe_info(df_energy, "에너지 소비")
+   
     if df_global_aq is not None:
         display_dataframe_info(df_global_aq, "글로벌 대기질")
 
@@ -230,28 +178,7 @@ elif analysis_option == '실내 공기질 분석':
 elif analysis_option == '공기질-건강 영향 분석':
     health_impact_analysis(df_health)
 
-elif analysis_option == '에너지 소비 분석':
-    energy_consumption_analysis(df_energy)
-    
-elif analysis_option == '통합 분석 아이디어':
-    st.header('💡 통합 분석 (가설 기반)')
-    st.markdown("""
-    **참고:** 업로드된 데이터셋 간에 직접적인 연결고리(예: 공통 ID, 정확한 시간 매칭)가 없어,
-    아래 통합 분석 섹션은 일반적인 분석 아이디어를 제공합니다. 실제 실행을 위해서는 데이터 통합 전처리가 더 필요합니다.
-    """)
-    st.subheader('아이디어 1: 에너지 소비-환기-실내 공기질 상관관계')
-    st.markdown("""
-    - **가정:** `에너지 소비` 데이터와 `실내 공기질` 데이터가 건물 ID나 시간으로 연결될 수 있다면...
-    - **분석:** 특정 환기 시스템(자연 vs. 기계) 사용 시 에너지 소비량과 실내 CO, NOx 등 공기질 지표의 관계를 분석할 수 있습니다.
-    - **기대효과:** 에너지 효율적인 최적의 환기 전략을 도출할 수 있습니다. (예: 실내 CO2 농도가 낮을 때는 환기 강도를 줄여 에너지 절약)
-    """)
 
-    st.subheader('아이디어 2: 실내/외 공기질과 건강 영향의 관계')
-    st.markdown("""
-    - **가정:** `실내 공기질`과 `건강 영향` 데이터가 지역 ID나 시간으로 연결될 수 있다면...
-    - **분석:** 실내 오염물질(C6H6 등) 농도와 호흡기/심혈관 질환 발병률 간의 시계열적 상관관계를 분석할 수 있습니다.
-    - **기대효과:** 특정 실내 오염물질이 건강에 미치는 영향을 정량적으로 파악하고, 위험 수준을 예측하여 사전 예방 조치를 취할 수 있습니다.
-    """)
     
     # 참고용 글로벌 데이터 분석도 함께 표시
     global_air_quality_analysis(df_global_aq)
